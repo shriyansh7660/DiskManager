@@ -270,7 +270,8 @@ int main() {
     //I have changed the file path here so now i can analyze other folder
     //this is how this folder can remane clean
     //fs::path rootPath = "C:/Users/shriy/OneDrive/Desktop/files";
-    fs::path rootPath = "C:/Users/Kaushiki/OneDrive/Desktop/Shreyansh/tallycodebrewers";
+    //fs::path rootPath = "C:/Users/Kaushiki/OneDrive/Desktop/Shreyansh/tallycodebrewers";
+     fs::path rootPath = fs::current_path();
     displayDiskSpaceInfo();
 
     //changes made to display file name only and not the whole address
