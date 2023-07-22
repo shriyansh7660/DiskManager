@@ -632,8 +632,8 @@ int main()
                 fs::space_info spaceInfo = fs::space(drive);
                 std::cout << "Drive: " << drive << "\n";
                 std::cout << std::fixed << std::setprecision(2);
-                double usedSpaceGB = static_cast<double>(spaceInfo.capacity - spaceInfo.free) / (1024 * 1024 * 1024);
-                std::cout << "Used Space: " << sizeToString(usedSpaceGB) << "\n\n";
+               // double usedSpaceGB = static_cast<double>(spaceInfo.capacity - spaceInfo.free) / (1024 * 1024 * 1024);
+                std::cout << "Used Space: " << sizeToString(spaceInfo.capacity - spaceInfo.free) << "\n\n";
             }
             break;
         case 3:
