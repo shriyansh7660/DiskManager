@@ -536,8 +536,11 @@ void calculateSpaceUtilization(const fs::path &drive, const std::vector<FileType
         std::cout << "\n";
     }
 }
-// Function to delete files of specific types
+
+// Function to delete files of specific types using multi-threading
 void delete_files_of_type(const fs::path&  directory, const std::string& file_type) {
+    std::vector<std::thread> threads;
+
     try {
         for (const auto& entry : fs::recursive_directory_iterator(directory)) {
             try {
@@ -548,7 +551,9 @@ void delete_files_of_type(const fs::path&  directory, const std::string& file_ty
 
                     if (extension == file_type) {
                         std::cout << "Deleting file: " << entry.path() << '\n';
-                        fs::remove(entry);
+                        threads.emplace_back([](const fs::directory_entry& e) {
+                            fs::remove(e);
+                        }, entry);
                     }
                 }
             } catch (const std::exception& e) {
@@ -559,6 +564,11 @@ void delete_files_of_type(const fs::path&  directory, const std::string& file_ty
     } catch (const std::exception& e) {
         // Handle the exception while traversing directories
         std::cerr << "Error while traversing directory: " << directory << ": " << e.what() << '\n';
+    }
+
+    // Wait for all threads to finish
+    for (auto& thread : threads) {
+        thread.join();
     }
 }
 
@@ -582,8 +592,7 @@ int main()
         std::cout << "4. Detect duplicate files\n";
         std::cout << "5. Identify large files\n";
         std::cout << "6. Scan specific file types\n";
-        std::cout << "7. Faster and efficient file/folder deletion\n";
-        std::cout << "8. Delete files of specific types\n";
+        std::cout << "7. Delete files of specific types\n";
         // std::cout << "Enter 0 to exit\n";
 
         std::cin >> choice;
