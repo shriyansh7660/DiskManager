@@ -10,7 +10,7 @@
 #include <thread>
 #include <mutex>
 #include <iomanip>
-
+#include "picosha2.h"
 namespace fs = std::filesystem;
 
 enum class FileType
@@ -155,29 +155,26 @@ void recoverDeletedFile()
     std::cout << "File recovery process completed.\n";
 }
 
-void displayDuplicateFiles(const std::unordered_map<uintmax_t, std::vector<fs::path>> &duplicateFiles)
-{
+
+void displayDuplicateFiles(const std::unordered_map<std::string, std::vector<fs::path>>& duplicateFiles) {
     std::cout << "\nDuplicate Files:\n";
     int groupNumber = 1;
-    for (const auto &[size, files] : duplicateFiles)
-    {
-        std::cout << "Group " << groupNumber << " (Size: " << sizeToString( size) << " ):\n";
-        for (size_t i = 0; i < files.size(); ++i)
-        {
+    for (const auto& [md5Hash, files] : duplicateFiles) { // Use std::string as the key type
+        std::cout << "Group " << groupNumber << " (MD5 Hash: " << md5Hash << "):\n";
+        for (size_t i = 0; i < files.size(); ++i) {
             std::cout << i + 1 << ". " << files[i].filename().string() << '\n';
         }
         ++groupNumber;
     }
 }
 
-void deleteDuplicateFiles(const std::unordered_map<uintmax_t, std::vector<fs::path>> &duplicateFiles)
-{
+
+void deleteDuplicateFiles(const std::unordered_map<std::string, std::vector<fs::path>>& duplicateFiles) {
     std::cout << "\nChoose group in which duplicate files to be deleted (0 to keep all): ";
     int groupToDelete;
     std::cin >> groupToDelete;
 
-    if (groupToDelete <= 0 || groupToDelete > static_cast<int>(duplicateFiles.size()))
-    {
+    if (groupToDelete <= 0 || groupToDelete > static_cast<int>(duplicateFiles.size())) {
         std::cout << "Invalid choice. No files deleted.\n";
         return;
     }
@@ -186,50 +183,41 @@ void deleteDuplicateFiles(const std::unordered_map<uintmax_t, std::vector<fs::pa
     std::advance(it, groupToDelete - 1);
 
     std::cout << "Files in Group " << groupToDelete << ":\n";
-    for (size_t i = 0; i < it->second.size(); ++i)
-    {
-        std::cout << i + 1 << ". " << fs::path(it->second[i]).filename().string() << '\n';
+    for (size_t i = 0; i < it->second.size(); ++i) {
+        std::cout << i + 1 << ". " << it->second[i].filename().string() << '\n';
     }
 
-    std::cout << "Enter the numbers of files to keep (space-separated), or 0 to delete all: ";
+    std::cout << "Enter the serial numbers of files to KEEP (space-separated) followed by 0 at end, or 0 to delete all: ";
     std::vector<int> filesToKeep;
     int fileToKeep;
     std::cin >> fileToKeep;
-    // while (std::cin >> fileToKeep && fileToKeep != 0) {
-    if (fileToKeep >= 1 && fileToKeep <= static_cast<int>(it->second.size()))
-    {
-        filesToKeep.push_back(fileToKeep);
-    }
-    else
-    {
-        std::cout << "Invalid file number. Please enter a valid number or 0 to delete all.\n";
-    }
-    //    }
+    //if ( && fileToKeep != 0) {
+        if (fileToKeep >= 1 && fileToKeep <= static_cast<int>(it->second.size())) {
+            filesToKeep.push_back(fileToKeep);
+        } else {
+            std::cout << "Invalid file number. Please enter a valid number or 0 to delete all.\n";
+        }
+    //}
 
-    if (filesToKeep.empty())
-    {
+    if (filesToKeep.empty()) {
         // Delete all files in the group
-        for (size_t i = 0; i < it->second.size(); ++i)
-        {
-            std::cout << "Moving to Trash: " << fs::path(it->second[i]).filename().string() << '\n';
+        for (size_t i = 0; i < it->second.size(); ++i) {
+            std::cout << "Moving to Trash: " << it->second[i].filename().string() << '\n';
             moveToTrash(it->second[i]);
         }
         std::cout << "All files in Group " << groupToDelete << " moved to Trash directory.\n";
-    }
-    else
-    {
+    } else {
         // Delete files not marked to keep
-        for (size_t i = 0; i < it->second.size(); ++i)
-        {
-            if (std::find(filesToKeep.begin(), filesToKeep.end(), i + 1) == filesToKeep.end())
-            {
-                std::cout << "Moving to Trash: " << fs::path(it->second[i]).filename().string() << '\n';
+        for (size_t i = 0; i < it->second.size(); ++i) {
+            if (std::find(filesToKeep.begin(), filesToKeep.end(), i + 1) == filesToKeep.end()) {
+                std::cout << "Moving to Trash: " << it->second[i].filename().string() << '\n';
                 moveToTrash(it->second[i]);
             }
         }
         std::cout << "Files moved to Trash directory.\n";
     }
 }
+
 
 void deleteLargeFiles(const std::vector<fs::path> &largeFiles)
 {
@@ -270,54 +258,88 @@ void deleteLargeFiles(const std::vector<fs::path> &largeFiles)
     }
 }
 
+// Function to compute MD5 hash of a file's content
+std::string computeFileMD5(const fs::path& filePath) {
+    std::ifstream file(filePath, std::ios::binary);
+    if (!file) {
+        return ""; // Return an empty string to indicate failure
+    }
 
+    std::string content(std::istreambuf_iterator<char>(file), {});
+    file.close();
+
+    return picosha2::hash256_hex_string(content);
+}
+// // Function to detect duplicate files using MD5 hashing
+// std::unordered_map<uintmax_t, std::vector<fs::path>> findDuplicateFiles(const fs::path &rootPath)
+// {
+//     std::unordered_map<uintmax_t, std::vector<fs::path>> duplicateFiles;
+
+//     for (const auto &entry : fs::recursive_directory_iterator(rootPath))
+//     {
+//         if (fs::is_regular_file(entry))
+//         {
+//             const auto fileSize = fs::file_size(entry);
+//             if (fileSize == 0)
+//             {
+//                 continue; // Ignore empty files
+//             }
+
+//             duplicateFiles[fileSize].push_back(entry.path());
+//         }
+//     }
+
+//     // Remove entries with a single file (no duplicates based on size)
+//     for (auto it = duplicateFiles.begin(); it != duplicateFiles.end();)
+//     {
+//         if (it->second.size() < 2)
+//         {
+//             it = duplicateFiles.erase(it);
+//         }
+//         else
+//         {
+//             ++it;
+//         }
+//     }
+
+//     // Compare files with the same size based on content (if needed)
+//     for (auto &[size, files] : duplicateFiles)
+//     {
+//         if (files.size() > 1)
+//         {
+//             std::sort(files.begin(), files.end());
+
+//             auto last = std::unique(files.begin(), files.end());
+//             files.erase(last, files.end());
+//         }
+//     }
+
+//     return duplicateFiles;
+// }
 // Function to detect duplicate files using MD5 hashing
-std::unordered_map<uintmax_t, std::vector<fs::path>> findDuplicateFiles(const fs::path &rootPath)
-{
-    std::unordered_map<uintmax_t, std::vector<fs::path>> duplicateFiles;
+std::unordered_map<std::string, std::vector<fs::path>> findDuplicateFiles(const fs::path& rootPath) {
+    std::unordered_map<std::string, std::vector<fs::path>> duplicateFiles;
 
-    for (const auto &entry : fs::recursive_directory_iterator(rootPath))
-    {
-        if (fs::is_regular_file(entry))
-        {
-            const auto fileSize = fs::file_size(entry);
-            if (fileSize == 0)
-            {
-                continue; // Ignore empty files
+    for (const auto& entry : fs::recursive_directory_iterator(rootPath)) {
+        if (fs::is_regular_file(entry)) {
+            std::string md5Hash = computeFileMD5(entry.path());
+            if (!md5Hash.empty()) {
+                duplicateFiles[md5Hash].push_back(entry.path());
             }
-
-            duplicateFiles[fileSize].push_back(entry.path());
         }
     }
 
-    // Remove entries with a single file (no duplicates based on size)
-    for (auto it = duplicateFiles.begin(); it != duplicateFiles.end();)
-    {
-        if (it->second.size() < 2)
-        {
+    // Remove entries with a single file (no duplicates based on MD5 hash)
+    for (auto it = duplicateFiles.begin(); it != duplicateFiles.end();) {
+        if (it->second.size() < 2) {
             it = duplicateFiles.erase(it);
-        }
-        else
-        {
+        } else {
             ++it;
-        }
-    }
-
-    // Compare files with the same size based on content (if needed)
-    for (auto &[size, files] : duplicateFiles)
-    {
-        if (files.size() > 1)
-        {
-            std::sort(files.begin(), files.end());
-
-            auto last = std::unique(files.begin(), files.end());
-            files.erase(last, files.end());
         }
     }
 
     return duplicateFiles;
 }
-
 // Function to calculate mean
 double calculateMean(const std::vector<uintmax_t> &fileSizes)
 {
@@ -589,8 +611,8 @@ void delete_files_of_type(const fs::path&  directory, const std::string& file_ty
 
 int main()
 {
-    std::vector<std::string> drives = {"C:/", "D:/", "F:/"}; // Replace with available drives on your system
-    std::unordered_map<uintmax_t, std::vector<fs::path>> duplicateFiles;
+    std::vector<std::string> drives = {"C:/","D:/","F:/"}; // Replace with available drives on your system
+    std::unordered_map<std::string, std::vector<fs::path>> duplicateFile;
     std::vector<uintmax_t> fileSizes;
     std::vector<fs::path> largeFiles;
     std::vector<FileType> fileTypesToScan = {FileType::Video, FileType::Image, FileType::Document}; // User-specified file types to scan
@@ -646,13 +668,13 @@ int main()
         case 4:
             // Implement the function for detecting duplicate files
             std::cout << "\nFinding duplicate files...\n";
-            duplicateFiles = findDuplicateFiles(rootPath);
-            displayDuplicateFiles(duplicateFiles);
+            duplicateFile = findDuplicateFiles(rootPath);
+            displayDuplicateFiles(duplicateFile);
             std::cout << "Do you want to delete duplicate files( y / n)?";
             char dupli;
             std::cin >> dupli;
             if (dupli == 'y')
-                deleteDuplicateFiles(duplicateFiles);
+                deleteDuplicateFiles(duplicateFile);
             break;
         case 5:
             // Implement the function for identifying large files
@@ -718,5 +740,11 @@ int main()
             choice = 0;
     } while (choice != 0);
 
+    // we need to show the files of trash to user on demand 
+
+    /*
+     manualCleanupTrashDirectory()
+     this function will clean up the trash directory if file is there in the trash longer than 1 day 
+     */
     return 0;
 }
