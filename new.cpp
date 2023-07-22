@@ -46,6 +46,30 @@ std::time_t to_time_t(const std::filesystem::file_time_type &ftime)
     return std::chrono::system_clock::to_time_t(sctp);
 }
 
+std::string sizeToString(unsigned long long sizeInBytes) {
+    static const char* suffixes[] = {"bytes", "KB", "MB", "GB"};
+    const int numSuffixes = sizeof(suffixes) / sizeof(suffixes[0]);
+
+    int suffixIndex = 0;
+    double size = static_cast<double>(sizeInBytes);
+
+    while (size >= 1024 && suffixIndex < numSuffixes - 1) {
+        size /= 1024;
+        suffixIndex++;
+    }
+
+    std::string result;
+    // if (suffixIndex == 0) {
+    //     result = std::to_string(size);
+    // } else {
+        std::ostringstream oss;
+        oss << std::fixed << std::setprecision(2) << size;
+        result = oss.str();
+   // }
+
+    return result + " " + suffixes[suffixIndex];
+}
+
 // Function to perform manual cleanup of the Trash directory
 void manualCleanupTrashDirectory()
 {
@@ -137,7 +161,7 @@ void displayDuplicateFiles(const std::unordered_map<uintmax_t, std::vector<fs::p
     int groupNumber = 1;
     for (const auto &[size, files] : duplicateFiles)
     {
-        std::cout << "Group " << groupNumber << " (Size: " << size << " bytes):\n";
+        std::cout << "Group " << groupNumber << " (Size: " << sizeToString( size) << " ):\n";
         for (size_t i = 0; i < files.size(); ++i)
         {
             std::cout << i + 1 << ". " << files[i].filename().string() << '\n';
@@ -246,21 +270,6 @@ void deleteLargeFiles(const std::vector<fs::path> &largeFiles)
     }
 }
 
-// Function to display disk space information
-// i have made change here so that the size is displayed in GB and not in bytes.
-void displayDiskSpaceInfo()
-{
-    fs::space_info spaceInfo = fs::space(fs::current_path());
-
-    double totalSpaceGB = static_cast<double>(spaceInfo.capacity) / (1024 * 1024 * 1024);
-    double freeSpaceGB = static_cast<double>(spaceInfo.free) / (1024 * 1024 * 1024);
-    double usedSpaceGB = totalSpaceGB - freeSpaceGB;
-
-    std::cout << std::fixed << std::setprecision(2);
-    std::cout << "Total Disk Space: " << totalSpaceGB << " GB\n";
-    std::cout << "Free Disk Space: " << freeSpaceGB << " GB\n";
-    std::cout << "Used Disk Space: " << usedSpaceGB << " GB\n";
-}
 
 // Function to detect duplicate files using MD5 hashing
 std::unordered_map<uintmax_t, std::vector<fs::path>> findDuplicateFiles(const fs::path &rootPath)
@@ -418,7 +427,7 @@ void calculateSpaceUtilization(const std::string &drive)
     std::cout << "Space Utilization Breakdown:\n";
     for (const auto &ft : file_types)
     {
-        std::cout << "File Type: " << ft.extension << ", Size: " << ft.size << " bytes\n";
+        std::cout << "File Type: " << ft.extension << ", Size: " << sizeToString(ft.size) << " \n";
         if (!inaccessibleDirs.empty())
         {
             std::cout << "Inaccessible Directories:\n";
@@ -463,6 +472,8 @@ std::string getFileTypeName(FileType type)
 // Custom recursive directory traversal function
 void traverseDirectory(const fs::path &dirPath, const std::vector<FileType> &fileTypesToScan, std::unordered_map<FileType, uintmax_t> &fileTypeUsage, std::vector<std::string> &inaccessibleDirs)
 {
+    //std::mutex mtx; // Mutex to synchronize access to the shared data structures
+  //  std::vector<std::thread> threads; // Vector to hold thread objects
     try
     {
         for (const auto &entry : fs::directory_iterator(dirPath))
@@ -472,12 +483,16 @@ void traverseDirectory(const fs::path &dirPath, const std::vector<FileType> &fil
                 FileType fileType = categorizeFile(entry.path());
                 if (fileType != FileType::Unknown && std::find(fileTypesToScan.begin(), fileTypesToScan.end(), fileType) != fileTypesToScan.end())
                 {
+                    // std::lock_guard<std::mutex> lock(mtx); // Lock the mutex to safely modify the shared fileTypeUsage map
                     fileTypeUsage[fileType] += fs::file_size(entry.path());
                 }
             }
             else if (fs::is_directory(entry))
             {
                 traverseDirectory(entry.path(), fileTypesToScan, fileTypeUsage, inaccessibleDirs);
+                //  threads.emplace_back([&]() {
+                //         traverseDirectory(entry.path(), fileTypesToScan, fileTypeUsage, inaccessibleDirs);
+                //     });
             }
         }
     }
@@ -506,8 +521,8 @@ void calculateSpaceUtilization(const fs::path &drive, const std::vector<FileType
     }
 
     std::cout << "Drive: " << drive << "\n";
-    std::cout << "Total Space: " << spaceInfo.capacity << " bytes\n";
-    std::cout << "Free Space: " << spaceInfo.free << " bytes\n";
+    std::cout << "Total Space: " << sizeToString( spaceInfo.capacity) << " \n";
+    std::cout << "Free Space: " << sizeToString( spaceInfo.free) << " \n";
 
     // Data structure to store space utilization breakdown by file type
     std::unordered_map<FileType, uintmax_t> fileTypeUsage;
@@ -520,7 +535,7 @@ void calculateSpaceUtilization(const fs::path &drive, const std::vector<FileType
     // Display space utilization breakdown by file type
     for (const auto &[type, size] : fileTypeUsage)
     {
-        std::cout << getFileTypeName(type) << ": " << size << " bytes\n";
+        std::cout << getFileTypeName(type) << ": " << sizeToString(size) << " \n";
     }
 
     std::cout << "\n";
@@ -552,7 +567,7 @@ void delete_files_of_type(const fs::path&  directory, const std::string& file_ty
                     if (extension == file_type) {
                         std::cout << "Deleting file: " << entry.path() << '\n';
                         threads.emplace_back([](const fs::directory_entry& e) {
-                            fs::remove(e);
+                            moveToTrash (e);
                         }, entry);
                     }
                 }
@@ -604,9 +619,11 @@ int main()
             {
                 fs::space_info spaceInfo = fs::space(drive);
                 std::cout << "Drive: " << drive << "\n";
-                std::cout << std::fixed << std::setprecision(2);
-                double freeSpaceGB = static_cast<double>(spaceInfo.free) / (1024 * 1024 * 1024);
-                std::cout << "Free Space: " << freeSpaceGB << " GB\n\n";
+                //std::cout << std::fixed << std::setprecision(2);
+               // double freeSpaceGB = static_cast<double>(spaceInfo.free) / (1024 * 1024 * 1024);
+
+                std::cout << "Free Space: " << sizeToString(spaceInfo.free) << "\n\n";
+//                std::cout << "Free Space: " << freeSpaceGB << " GB\n\n";
             }
             break;
         case 2:
@@ -616,7 +633,7 @@ int main()
                 std::cout << "Drive: " << drive << "\n";
                 std::cout << std::fixed << std::setprecision(2);
                 double usedSpaceGB = static_cast<double>(spaceInfo.capacity - spaceInfo.free) / (1024 * 1024 * 1024);
-                std::cout << "Used Space: " << usedSpaceGB << " GB\n\n";
+                std::cout << "Used Space: " << sizeToString(usedSpaceGB) << "\n\n";
             }
             break;
         case 3:
@@ -653,8 +670,8 @@ int main()
                 double mean = calculateMean(fileSizes);
                 double stdDev = calculateStandardDeviation(fileSizes, mean);
 
-                std::cout << "Mean file size: " << mean << " bytes\n";
-                std::cout << "Standard Deviation: " << stdDev << " bytes\n";
+                std::cout << "Mean file size: " <<  sizeToString(mean) << " \n";
+                std::cout << "Standard Deviation: " << sizeToString(stdDev) << " \n";
 
                 std::cout << "\nFinding large files...\n";
                 largeFiles = findLargeFiles(rootPath, mean, stdDev);
